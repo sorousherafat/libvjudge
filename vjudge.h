@@ -56,6 +56,7 @@ typedef struct {
     char *src_file_paths[VJUDGE_MAX_SRC_FILES_NO];
 } judge_input_t;
 
+void run_judge(judge_input_t *judge_input, judge_result_t *judge_result);
 
 
 #endif // VJUDGE_VJUDGE_H
