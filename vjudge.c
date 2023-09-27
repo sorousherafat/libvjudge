@@ -16,10 +16,11 @@ static DIR *tests_dir;
 static char *tests_dir_path;
 static test_t tests[MAX_TESTS_NO];
 static size_t tests_count = 0;
-static judge_result_t *result;
+static judge_result_t *judge_result;
 
-void run_judge(judge_input_t *judge_input, judge_result_t *judge_result) {
-    result = judge_result;
+void run_judge(judge_input_t *judge_input, judge_result_t *judge_result_arg) {
+    judge_result = judge_result_arg;
+    judge_result->error = NO_ERROR;
 
     tests_dir_path = judge_input->test_dir_path;
     int src_files_count = judge_input->src_files_count;
@@ -32,12 +33,20 @@ void run_judge(judge_input_t *judge_input, judge_result_t *judge_result) {
 void check_files_existence(int src_files_count, char *const *src_file_paths) {
     bool files_exist = true;
     if ((tests_dir = opendir(tests_dir_path)) == NULL) {
+        judge_result->error = ERROR_OPENING_TESTS_DIRECTORY;
+        judge_result->passed = false;
+        judge_result->passed_tests_count = 0;
+        judge_result->tests_count = -1;
         fprintf(stderr, "Could not open tests directory: %s\n", tests_dir_path);
         files_exist = false;
     }
 
     for (int i = 0; i < src_files_count; i++)
         if (access(src_file_paths[i], R_OK) == -1) {
+            judge_result->error = ERROR_OPENING_SOURCE_FILE;
+            judge_result->passed = false;
+            judge_result->passed_tests_count = 0;
+            judge_result->tests_count = -1;
             fprintf(stderr, "Could not open source file: %s\n", src_file_paths[i]);
             files_exist = false;
         }
@@ -107,6 +116,10 @@ void read_assertions(test_t *test, FILE *assertion_file) {
     int result;
     while ((result = fscanf(assertion_file, "%d %m[^=]=%m[^\n]\n", &timestamp, &signal_name, &expected_value)) != EOF) {
         if (result != 3) {
+            judge_result->error = ERROR_ASSERTIONS_FILE_WRONG_FORMAT;
+            judge_result->passed = false;
+            judge_result->passed_tests_count = 0;
+            judge_result->tests_count = -1;
             fprintf(stderr, "An error occurred when trying to read assertion files");
             exit(EXIT_FAILURE);
         }
@@ -132,6 +145,10 @@ void write_assertion_file_path(char *assertion_file_path, const char *test_name)
 FILE *open_assertion_file(const struct dirent *tests_dirent, const char *assertion_file_path) {
     FILE *assertion_file;
     if ((assertion_file = fopen(assertion_file_path, "r")) == NULL) {
+        judge_result->error = ERROR_ASSERTIONS_FILE_NOT_EXISTS;
+        judge_result->passed = false;
+        judge_result->passed_tests_count = 0;
+        judge_result->tests_count = -1;
         fprintf(stderr, "Found '%s/%s' test file but could not open '%s' assertion file\n", tests_dir_path,
                 tests_dirent->d_name, assertion_file_path);
         exit(EXIT_FAILURE);
@@ -161,6 +178,10 @@ bool run_test(const char *src_file_path, test_t *test) {
 
     vcd_t *vcd = open_vcd((char *)vcd_file_name);
     if (vcd == NULL) {
+        judge_result->error = ERROR_OPENING_VCD_FILE;
+        judge_result->passed = false;
+        judge_result->passed_tests_count = 0;
+        judge_result->tests_count = -1;
         fprintf(stderr, "An error occurred when opening .vcd file '%s'", vcd_file_name);
         exit(EXIT_FAILURE);
     }
