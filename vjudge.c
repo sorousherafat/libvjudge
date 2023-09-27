@@ -18,16 +18,20 @@ static test_t tests[MAX_TESTS_NO];
 static size_t tests_count = 0;
 static judge_result_t *judge_result;
 
-void run_judge(judge_input_t *judge_input, judge_result_t *judge_result_arg) {
+void run_judge(judge_input_t *judge_input_arg, judge_result_t *judge_result_arg) {
     judge_result = judge_result_arg;
     judge_result->error = NO_ERROR;
+    judge_result->tests_count = tests_count;
 
-    tests_dir_path = judge_input->test_dir_path;
-    int src_files_count = judge_input->src_files_count;
-    char **src_file_paths = judge_input->src_file_paths;
+    tests_dir_path = judge_input_arg->test_dir_path;
+    int src_files_count = judge_input_arg->src_files_count;
+    char **src_file_paths = judge_input_arg->src_file_paths;
 
     check_files_existence(src_files_count, src_file_paths);
     load_tests();
+
+    test_src_files(src_files_count, src_file_paths);
+    judge_result->passed = true ? judge_result->passed_tests_count == judge_result->tests_count : false;
 }
 
 void check_files_existence(int src_files_count, char *const *src_file_paths) {
@@ -97,7 +101,11 @@ test_t *read_test(char *test_name) {
     test_t *test = &tests[tests_count];
     test->name = test_name;
     test->assertions_count = 0;
+
+    judge_result->tests[tests_count] = *test;
     tests_count += 1;
+    judge_result->tests_count = tests_count;
+    
     return test;
 }
 
@@ -165,9 +173,11 @@ void test_src_files(int src_files_count, char *const *src_file_paths) {
 
 void test_src_file(const char *src_file_path) {
     size_t passed_tests_count = 0;
+    judge_result->passed_tests_count = passed_tests_count;
     for (int test_index = 0; test_index < tests_count; ++test_index) {
         test_t *test = &tests[test_index];
         passed_tests_count += run_test(src_file_path, test);
+        judge_result->passed_tests_count = passed_tests_count;
         test_clean_up();
     }
     print_src_report(src_file_path, passed_tests_count);
@@ -199,10 +209,10 @@ bool run_test(const char *src_file_path, test_t *test) {
 }
 
 void create_vcd_file(const char *src_file_path, const test_t *test) {
-    // char command[PATH_MAX];
-    // sprintf(command, "%s %s/%s-test.v %s -o %s && ./%s > /dev/null", "iverilog", tests_dir_path, test->name,
-    //         src_file_path, out_file_name, out_file_name);
-    // system(command);
+    char command[PATH_MAX];
+    sprintf(command, "%s %s/%s-test.v %s -o %s && ./%s > /dev/null", "iverilog", tests_dir_path, test->name,
+            src_file_path, out_file_name, out_file_name);
+    system(command);
 }
 
 bool check_assertion(vcd_t *vcd, assertion_result_t *assertion_result, assertion_t *assertion) {
