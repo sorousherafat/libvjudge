@@ -74,7 +74,6 @@ void run_judge(judge_input_t *judge_input_arg, judge_result_t *judge_result_arg)
 }
 
 void check_files_existence(int src_files_count, char *const *src_file_paths) {
-    bool files_exist = true;
     if ((tests_dir = opendir(judge_input->test_dir_path)) == NULL) {
         set_judge_error(ERROR_OPENING_TESTS_DIRECTORY);
         return;
