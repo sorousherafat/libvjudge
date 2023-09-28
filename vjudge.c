@@ -13,9 +13,7 @@
 static const char *out_file_name = ".tmp.o";
 static const char *vcd_file_name = ".tmp.vcd";
 static DIR *tests_dir;
-static char *tests_dir_path;
-static test_t tests[MAX_TESTS_NO];
-static size_t tests_count = 0;
+static judge_input_t *judge_input;
 static judge_result_t *judge_result;
 
 void check_files_existence(int src_files_count, char *const *src_file_paths);
@@ -38,59 +36,55 @@ void write_assertion_file_path(char *assertion_file_path, const char *test_name)
 
 FILE *open_assertion_file(const struct dirent *tests_dirent, const char *assertion_file_path);
 
-void run_tests(size_t src_files_count, const char **src_file_paths);
+void run_tests(size_t src_files_count, char *src_file_paths[]);
 
-bool run_test(size_t src_files_count, const char **src_file_paths, test_t *test);
+bool run_test(size_t src_files_count, char *src_file_paths[], test_t *test);
 
-void create_vcd_file(size_t src_files_count, const char **src_file_paths, const test_t *test);
+void create_vcd_file(size_t src_files_count, char *src_file_paths[], const test_t *test);
 
 bool check_assertion(vcd_t *vcd, assertion_result_t *assertion_result, assertion_t *assertion);
 
-bool check_assertions(const test_t *test, vcd_t *vcd);
+size_t count_passed_assertions(const test_t *test, vcd_t *vcd);
 
 void test_clean_up();
 
+void set_judge_error(error_t error);
+
+void strjoin(char *dest, char *src[], size_t length, char *delimiter);
+
 void run_judge(judge_input_t *judge_input_arg, judge_result_t *judge_result_arg) {
+    judge_input = judge_input_arg;
+
     judge_result = judge_result_arg;
     judge_result->error = NO_ERROR;
-    judge_result->tests_count = tests_count;
+    judge_result->tests_count = 0;
+    judge_result->passed_tests_count = 0;
 
-    tests_dir_path = judge_input_arg->test_dir_path;
-    int src_files_count = judge_input_arg->src_files_count;
-    const char **src_file_paths = judge_input_arg->src_file_paths;
+    check_files_existence(judge_input->src_files_count, judge_input_arg->src_file_paths);
+    if (judge_result->error != NO_ERROR)
+        return;
 
-    check_files_existence(src_files_count, src_file_paths);
     load_tests();
+    if (judge_result->error != NO_ERROR)
+        return;
 
-    run_tests(src_files_count, src_file_paths);
-    judge_result->passed = true ? judge_result->passed_tests_count == judge_result->tests_count : false;
+    run_tests(judge_input->src_files_count, judge_input_arg->src_file_paths);
+    if (judge_result->error != NO_ERROR)
+        return;
 }
 
 void check_files_existence(int src_files_count, char *const *src_file_paths) {
     bool files_exist = true;
-    if ((tests_dir = opendir(tests_dir_path)) == NULL) {
-        judge_result->error = ERROR_OPENING_TESTS_DIRECTORY;
-        judge_result->passed = false;
-        judge_result->passed_tests_count = 0;
-        judge_result->tests_count = -1;
-        fprintf(stderr, "Could not open tests directory: %s\n", tests_dir_path);
-        files_exist = false;
+    if ((tests_dir = opendir(judge_input->test_dir_path)) == NULL) {
+        set_judge_error(ERROR_OPENING_TESTS_DIRECTORY);
+        return;
     }
 
     for (int i = 0; i < src_files_count; i++)
         if (access(src_file_paths[i], R_OK) == -1) {
-            judge_result->error = ERROR_OPENING_SOURCE_FILE;
-            judge_result->passed = false;
-            judge_result->passed_tests_count = 0;
-            judge_result->tests_count = -1;
-            fprintf(stderr, "Could not open source file: %s\n", src_file_paths[i]);
-            files_exist = false;
+            set_judge_error(ERROR_OPENING_SOURCE_FILE);
+            return;
         }
-
-    if (!files_exist) {
-        fprintf(stderr, "\nError!");
-        exit(EXIT_FAILURE);
-    }
 }
 
 void load_tests() {
@@ -109,6 +103,8 @@ void load_tests() {
         test_t *test = read_test(test_name);
 
         read_test_assertions(tests_dirent, test_name, test);
+        if (judge_result->error != NO_ERROR)
+            return;
     }
 }
 
@@ -120,8 +116,9 @@ bool try_get_test_name(char *file_name, char **test_name) {
 }
 
 bool test_exists(const char *test_name) {
+    size_t tests_count = judge_result->tests_count;
     for (int test_index = 0; test_index < tests_count; ++test_index) {
-        test_t *test = &tests[test_index];
+        test_t *test = &judge_result->tests[test_index];
         if (strcmp(test->name, test_name) == 0)
             return true;
     }
@@ -130,14 +127,11 @@ bool test_exists(const char *test_name) {
 }
 
 test_t *read_test(char *test_name) {
-    test_t *test = &tests[tests_count];
+    test_t *test = &judge_result->tests[judge_result->tests_count];
     test->name = test_name;
     test->assertions_count = 0;
+    judge_result->tests_count += 1;
 
-    judge_result->tests[tests_count] = *test;
-    tests_count += 1;
-    judge_result->tests_count = tests_count;
-    
     return test;
 }
 
@@ -146,7 +140,12 @@ void read_test_assertions(const struct dirent *tests_dirent, const char *test_na
     write_assertion_file_path(assertion_file_path, test_name);
 
     FILE *assertion_file = open_assertion_file(tests_dirent, assertion_file_path);
+    if (judge_result->error != NO_ERROR)
+        return;
+    
     read_assertions(test, assertion_file);
+    if (judge_result->error != NO_ERROR)
+        return;
 }
 
 void read_assertions(test_t *test, FILE *assertion_file) {
@@ -156,12 +155,8 @@ void read_assertions(test_t *test, FILE *assertion_file) {
     int result;
     while ((result = fscanf(assertion_file, "%d %m[^=]=%m[^\n]\n", &timestamp, &signal_name, &expected_value)) != EOF) {
         if (result != 3) {
-            judge_result->error = ERROR_ASSERTIONS_FILE_WRONG_FORMAT;
-            judge_result->passed = false;
-            judge_result->passed_tests_count = 0;
-            judge_result->tests_count = -1;
-            fprintf(stderr, "An error occurred when trying to read assertion files");
-            exit(EXIT_FAILURE);
+            set_judge_error(ERROR_ASSERTIONS_FILE_WRONG_FORMAT);
+            return;
         }
 
         write_assertion(test, timestamp, expected_value, signal_name);
@@ -170,7 +165,7 @@ void read_assertions(test_t *test, FILE *assertion_file) {
 
 void write_assertion(test_t *test, timestamp_t timestamp, char *expected_value, char *signal_name) {
     assertion_result_t *assertion_result = &test->assertion_results[test->assertions_count];
-    assertion_result->passed = false;    
+    assertion_result->passed = false;
     assertion_t *assertion = &assertion_result->assertion;
     assertion->timestamp = timestamp;
     assertion->expected_value = expected_value;
@@ -179,73 +174,63 @@ void write_assertion(test_t *test, timestamp_t timestamp, char *expected_value, 
 }
 
 void write_assertion_file_path(char *assertion_file_path, const char *test_name) {
-    snprintf(assertion_file_path, MAX_NAME_SIZE, "%s/%s-assertion.txt", tests_dir_path, test_name);
+    snprintf(assertion_file_path, MAX_NAME_SIZE, "%s/%s-assertion.txt", judge_input->test_dir_path, test_name);
 }
 
 FILE *open_assertion_file(const struct dirent *tests_dirent, const char *assertion_file_path) {
     FILE *assertion_file;
     if ((assertion_file = fopen(assertion_file_path, "r")) == NULL) {
-        judge_result->error = ERROR_ASSERTIONS_FILE_NOT_EXISTS;
-        judge_result->passed = false;
-        judge_result->passed_tests_count = 0;
-        judge_result->tests_count = -1;
-        fprintf(stderr, "Found '%s/%s' test file but could not open '%s' assertion file\n", tests_dir_path,
-                tests_dirent->d_name, assertion_file_path);
-        exit(EXIT_FAILURE);
+        set_judge_error(ERROR_ASSERTIONS_FILE_NOT_EXISTS);
+        return NULL;
     }
+
     return assertion_file;
 }
 
-void run_tests(size_t src_files_count, const char **src_file_paths) {
-    size_t passed_tests_count = 0;
-    judge_result->passed_tests_count = passed_tests_count;
+void run_tests(size_t src_files_count, char *src_file_paths[]) {
+    judge_result->passed_tests_count = 0;
+    size_t tests_count = judge_result->tests_count;
     for (int test_index = 0; test_index < tests_count; ++test_index) {
-        test_t *test = &tests[test_index];
-        passed_tests_count += run_test(src_files_count, src_file_paths, test);
-        judge_result->passed_tests_count = passed_tests_count;
+        test_t *test = &judge_result->tests[test_index];
+
+        judge_result->passed_tests_count += run_test(src_files_count, src_file_paths, test);
         test_clean_up();
+        if (judge_result->error != NO_ERROR)
+            return;
     }
-    // print_src_report(src_file_path, passed_tests_count);
+    judge_result->passed = judge_result->passed_tests_count == judge_result->tests_count;
 }
 
-bool run_test(size_t src_files_count, const char **src_file_paths, test_t *test) {
+bool run_test(size_t src_files_count, char *src_file_paths[], test_t *test) {
     create_vcd_file(src_files_count, src_file_paths, test);
+    if (judge_result->error != NO_ERROR)
+        return false;
 
     vcd_t *vcd = open_vcd((char *)vcd_file_name);
     if (vcd == NULL) {
-        judge_result->error = ERROR_OPENING_VCD_FILE;
-        judge_result->passed = false;
-        judge_result->passed_tests_count = 0;
-        judge_result->tests_count = -1;
-        fprintf(stderr, "An error occurred when opening .vcd file '%s'", vcd_file_name);
-        exit(EXIT_FAILURE);
+        set_judge_error(ERROR_OPENING_VCD_FILE);
+        return false;
     }
 
-    bool test_passed = check_assertions(test, vcd);
-
-    if (test_passed) {
-        // print_test_passed(src_file_path, test);
-    } else {
-        // print_test_failed(src_file_path, test);
-        // print_failed_assertions_if_verbose(src_file_path, test);
-    }
-
-    return test_passed;
+    test->passed_assertions_count = count_passed_assertions(test, vcd);
+    test->passed = test->passed_assertions_count == test->assertions_count;
+    return test->passed;
 }
 
-void create_vcd_file(size_t src_files_count, const char **src_file_paths, const test_t *test) {
-    char command[PATH_MAX * 2];
+void create_vcd_file(size_t src_files_count, char *src_file_paths[], const test_t *test) {
+    char command[PATH_MAX * (src_files_count + 1)];
     /* Join all src file paths to a single string & spaces between each path*/
-    char src_file_path[PATH_MAX];
-    strcpy(src_file_path, src_file_paths[0]);
-    for (int i = 1; i < src_files_count; i++) {
-        strcat(src_file_path, " ");
-        strcat(src_file_path, src_file_paths[i]);
+    char src_files_arg[PATH_MAX * src_files_count];
+    strjoin(src_files_arg, src_file_paths, src_files_count, " ");
+
+    sprintf(command, "%s %s/%s-test.v %s -o %s && ./%s > /dev/null", "iverilog", judge_input->test_dir_path, test->name,
+            src_files_arg, out_file_name, out_file_name);
+    
+    int compilation_exit_code = system(command);
+    if (compilation_exit_code != 0) {
+        set_judge_error(ERROR_COMPILING_VERILOG_FILE);
+        return;
     }
-    printf("all paths: %s", src_file_path);
-    sprintf(command, "%s %s/%s-test.v %s -o %s && ./%s > /dev/null", "iverilog", tests_dir_path, test->name,
-            src_file_path, out_file_name, out_file_name);
-    system(command);
 }
 
 bool check_assertion(vcd_t *vcd, assertion_result_t *assertion_result, assertion_t *assertion) {
@@ -259,17 +244,35 @@ bool check_assertion(vcd_t *vcd, assertion_result_t *assertion_result, assertion
     return false;
 }
 
-bool check_assertions(const test_t *test, vcd_t *vcd) {
-    bool test_passed = true;
+size_t count_passed_assertions(const test_t *test, vcd_t *vcd) {
+    size_t passed_assertions = 0;
     for (int assertion_index = 0; assertion_index < test->assertions_count; ++assertion_index) {
         assertion_result_t *assertion_result = (assertion_result_t *)&test->assertion_results[assertion_index];
         assertion_t *assertion = &assertion_result->assertion;
-        test_passed &= check_assertion(vcd, assertion_result, assertion);
+        assertion_result->passed = check_assertion(vcd, assertion_result, assertion);
+        passed_assertions += assertion_result->passed;
     }
-    return test_passed;
+    return passed_assertions;
 }
 
 void test_clean_up() {
     remove(out_file_name);
     remove(vcd_file_name);
+}
+
+void set_judge_error(error_t error) {
+    judge_result->error = error;
+    judge_result->passed = false;
+}
+
+void strjoin(char *dest, char *src[], size_t length, char *delimiter) {
+    if (length <= 0)
+        return;
+
+    strcpy(dest, src[0]);
+
+    for (size_t i = 1; i < length; i++) {
+        strcat(dest, delimiter);
+        strcat(dest, src[i]);
+    }
 }
