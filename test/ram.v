@@ -27,6 +27,20 @@ module ternary_content_addressable_memory #(
     reg [word_size - 1:0] j;
     reg flag;
 
+    ternary_content_addressable_memory2 #(
+        // .word_size(word_size),
+        // .address_size(address_size)
+    ) tcam (
+        // .matched(matched),
+        // .word(word),
+        // .mask(mask),
+        // .address(address),
+        // .write(write),
+        // .clock(clock),
+        // .reset(reset)
+    );
+
+
     always @(posedge clock)
     begin
         if (write)

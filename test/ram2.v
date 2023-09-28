@@ -1,6 +1,6 @@
 `define WORD_SIZE 8
 
-module ternary_content_addressable_memory #(
+module ternary_content_addressable_memory2 #(
     parameter word_size = `WORD_SIZE,
     parameter address_size = 4
 ) (
