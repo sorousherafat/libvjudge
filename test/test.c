@@ -38,10 +38,7 @@ int main(int argc, char *argv[]) {
     judge_result_t judge_result;
 
     judge_input.test_dir_path = argv[1];
-    judge_input.src_files_count = argc - 2;
-    for (int i = 0; i < judge_input.src_files_count; i++) {
-        judge_input.src_file_paths[i] = argv[i + 2];
-    }
+    judge_input.src_dir_path = argv[2];
 
     run_judge(&judge_input, &judge_result);
 

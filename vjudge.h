@@ -19,7 +19,7 @@ typedef enum {
     ERROR_ASSERTIONS_FILE_WRONG_FORMAT,
     ERROR_ASSERTIONS_FILE_NOT_EXISTS,
     ERROR_OPENING_TESTS_DIRECTORY,
-    ERROR_OPENING_SOURCE_FILE
+    ERROR_OPENING_SRCS_DIRECTORY
 } error_t;
 
 typedef struct {
@@ -52,8 +52,7 @@ typedef struct {
 
 typedef struct {
     char *test_dir_path;
-    size_t src_files_count;
-    char *src_file_paths[VJUDGE_MAX_SRC_FILES_NO];
+    char *src_dir_path;
 } judge_input_t;
 
 void run_judge(judge_input_t *judge_input, judge_result_t *judge_result);

@@ -6,17 +6,15 @@
 #include <string.h>
 #include <unistd.h>
 
-#define MAX_NAME_SIZE 128
-#define MAX_ASSERTIONS_NO 1024
-#define MAX_TESTS_NO 64
-
 static const char *out_file_name = ".tmp.o";
 static const char *vcd_file_name = ".tmp.vcd";
 static DIR *tests_dir;
+static DIR *srcs_dir;
 static judge_input_t *judge_input;
 static judge_result_t *judge_result;
 
-void check_files_existence(int src_files_count, char *const *src_file_paths);
+
+void check_files_existence(char *src_dir_path, char *test_dir_path);
 
 void load_tests();
 
@@ -44,6 +42,10 @@ void create_vcd_file(size_t src_files_count, char *src_file_paths[], const test_
 
 bool check_assertion(vcd_t *vcd, assertion_result_t *assertion_result, assertion_t *assertion);
 
+bool src_exists(char *src_name, char *src_files_paths[], size_t src_files_count);
+
+int load_srcs(char *src_files_paths[]);
+
 size_t count_passed_assertions(const test_t *test, vcd_t *vcd);
 
 void test_clean_up();
@@ -60,7 +62,7 @@ void run_judge(judge_input_t *judge_input_arg, judge_result_t *judge_result_arg)
     judge_result->tests_count = 0;
     judge_result->passed_tests_count = 0;
 
-    check_files_existence(judge_input->src_files_count, judge_input_arg->src_file_paths);
+    check_files_existence(judge_input->src_dir_path, judge_input->test_dir_path);
     if (judge_result->error != NO_ERROR)
         return;
 
@@ -68,22 +70,26 @@ void run_judge(judge_input_t *judge_input_arg, judge_result_t *judge_result_arg)
     if (judge_result->error != NO_ERROR)
         return;
 
-    run_tests(judge_input->src_files_count, judge_input_arg->src_file_paths);
+    int src_files_count;
+    char *src_file_paths[VJUDGE_MAX_SRC_FILES_NO];
+    src_files_count = load_srcs(src_file_paths);
+    
+
+    run_tests(src_files_count, src_file_paths);
     if (judge_result->error != NO_ERROR)
         return;
 }
 
-void check_files_existence(int src_files_count, char *const *src_file_paths) {
+void check_files_existence(char *src_dir_path, char *test_dir_path) {
     if ((tests_dir = opendir(judge_input->test_dir_path)) == NULL) {
         set_judge_error(ERROR_OPENING_TESTS_DIRECTORY);
         return;
     }
 
-    for (int i = 0; i < src_files_count; i++)
-        if (access(src_file_paths[i], R_OK) == -1) {
-            set_judge_error(ERROR_OPENING_SOURCE_FILE);
-            return;
-        }
+    if ((srcs_dir = opendir(src_dir_path)) == NULL) {
+        set_judge_error(ERROR_OPENING_SRCS_DIRECTORY);
+        return;
+    }
 }
 
 void load_tests() {
@@ -105,6 +111,29 @@ void load_tests() {
         if (judge_result->error != NO_ERROR)
             return;
     }
+}
+
+int load_srcs(char *src_files_paths[]) {
+    struct dirent *srcs_dirent;
+    size_t src_files_count = 0;
+    while ((srcs_dirent = readdir(srcs_dir)) != NULL) {
+        if (srcs_dirent->d_type != DT_REG)
+            continue;
+        
+        if (!src_exists(srcs_dirent->d_name, src_files_paths, src_files_count)) {
+            strcpy(src_files_paths[src_files_count], srcs_dirent->d_name);
+            ++src_files_count;
+        }
+    }
+    return src_files_count;
+}
+
+bool src_exists(char *src_name, char *src_files_paths[], size_t src_files_count) {
+    for (int src_index = 0; src_index < src_files_count; ++src_index) {
+        if (strcmp(src_name, src_files_paths[src_index]) == 0)
+            return true;
+    }
+    return false;
 }
 
 bool try_get_test_name(char *file_name, char **test_name) {
@@ -173,7 +202,7 @@ void write_assertion(test_t *test, timestamp_t timestamp, char *expected_value, 
 }
 
 void write_assertion_file_path(char *assertion_file_path, const char *test_name) {
-    snprintf(assertion_file_path, MAX_NAME_SIZE, "%s/%s-assertion.txt", judge_input->test_dir_path, test_name);
+    snprintf(assertion_file_path, VJUDGE_MAX_NAME_SIZE, "%s/%s-assertion.txt", judge_input->test_dir_path, test_name);
 }
 
 FILE *open_assertion_file(const struct dirent *tests_dirent, const char *assertion_file_path) {
