@@ -114,14 +114,14 @@ void load_tests() {
 }
 
 int load_srcs(char *src_files_paths[]) {
-    struct dirent *srcs_dirent;
+    struct dirent *src_dirent;
     size_t src_files_count = 0;
-    while ((srcs_dirent = readdir(srcs_dir)) != NULL) {
-        if (srcs_dirent->d_type != DT_REG)
+    while ((src_dirent = readdir(srcs_dir)) != NULL) {
+        if (src_dirent->d_type != DT_REG)
             continue;
-        
-        if (!src_exists(srcs_dirent->d_name, src_files_paths, src_files_count)) {
-            strcpy(src_files_paths[src_files_count], srcs_dirent->d_name);
+        if (!src_exists(src_dirent->d_name, src_files_paths, src_files_count)) {
+            strcpy(src_files_paths[src_files_count], judge_input->src_dir_path);
+            strcat(src_files_paths[src_files_count], src_dirent->d_name);
             ++src_files_count;
         }
     }
@@ -246,7 +246,7 @@ bool run_test(size_t src_files_count, char *src_file_paths[], test_t *test) {
 }
 
 void create_vcd_file(size_t src_files_count, char *src_file_paths[], const test_t *test) {
-    char command[PATH_MAX * (src_files_count + 1)];
+    char command[PATH_MAX * (src_files_count + 3)];
     /* Join all src file paths to a single string & spaces between each path*/
     char src_files_arg[PATH_MAX * src_files_count];
     strjoin(src_files_arg, src_file_paths, src_files_count, " ");
