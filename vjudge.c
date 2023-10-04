@@ -13,7 +13,6 @@ static DIR *srcs_dir;
 static judge_input_t *judge_input;
 static judge_result_t *judge_result;
 
-
 void check_files_existence(char *src_dir_path, char *test_dir_path);
 
 void load_tests();
@@ -41,8 +40,6 @@ bool run_test(size_t src_files_count, char *src_file_paths[], test_t *test);
 void create_vcd_file(size_t src_files_count, char *src_file_paths[], const test_t *test);
 
 bool check_assertion(vcd_t *vcd, assertion_result_t *assertion_result, assertion_t *assertion);
-
-bool src_exists(char *src_name, char *src_files_paths[], size_t src_files_count);
 
 int load_srcs(char *src_files_paths[]);
 
@@ -73,7 +70,8 @@ void run_judge(judge_input_t *judge_input_arg, judge_result_t *judge_result_arg)
     int src_files_count;
     char *src_file_paths[VJUDGE_MAX_SRC_FILES_NO];
     src_files_count = load_srcs(src_file_paths);
-    
+    if (judge_result->error != NO_ERROR)
+        return;
 
     run_tests(src_files_count, src_file_paths);
     if (judge_result->error != NO_ERROR)
@@ -116,24 +114,22 @@ void load_tests() {
 int load_srcs(char *src_files_paths[]) {
     struct dirent *src_dirent;
     size_t src_files_count = 0;
+    const char *src_file_path_format = "%s/%s";
     while ((src_dirent = readdir(srcs_dir)) != NULL) {
         if (src_dirent->d_type != DT_REG)
             continue;
-        if (!src_exists(src_dirent->d_name, src_files_paths, src_files_count)) {
-            strcpy(src_files_paths[src_files_count], judge_input->src_dir_path);
-            strcat(src_files_paths[src_files_count], src_dirent->d_name);
-            ++src_files_count;
+        int src_file_path_length =
+            snprintf(NULL, 0, src_file_path_format, judge_input->src_dir_path, src_dirent->d_name);
+        if (src_file_path_length < 0) {
+            set_judge_error(ERROR_OPENING_SRCS_DIRECTORY);
+            return -1;
         }
+        src_files_paths[src_files_count] = malloc((src_file_path_length + 1) * sizeof(char));
+        snprintf(src_files_paths[src_files_count], src_file_path_length + 1, src_file_path_format,
+                 judge_input->src_dir_path, src_dirent->d_name);
+        src_files_count += 1;
     }
     return src_files_count;
-}
-
-bool src_exists(char *src_name, char *src_files_paths[], size_t src_files_count) {
-    for (int src_index = 0; src_index < src_files_count; ++src_index) {
-        if (strcmp(src_name, src_files_paths[src_index]) == 0)
-            return true;
-    }
-    return false;
 }
 
 bool try_get_test_name(char *file_name, char **test_name) {
@@ -170,7 +166,7 @@ void read_test_assertions(const struct dirent *tests_dirent, const char *test_na
     FILE *assertion_file = open_assertion_file(tests_dirent, assertion_file_path);
     if (judge_result->error != NO_ERROR)
         return;
-    
+
     read_assertions(test, assertion_file);
     if (judge_result->error != NO_ERROR)
         return;
@@ -246,15 +242,17 @@ bool run_test(size_t src_files_count, char *src_file_paths[], test_t *test) {
 }
 
 void create_vcd_file(size_t src_files_count, char *src_file_paths[], const test_t *test) {
-    char command[PATH_MAX * (src_files_count + 3)];
+    char *command = malloc(PATH_MAX * (src_files_count + 2) * sizeof(char));
     /* Join all src file paths to a single string & spaces between each path*/
-    char src_files_arg[PATH_MAX * src_files_count];
+    char *src_files_arg = malloc(PATH_MAX * src_files_count * sizeof(char));
     strjoin(src_files_arg, src_file_paths, src_files_count, " ");
 
     sprintf(command, "%s %s/%s-test.v %s -o %s && ./%s > /dev/null", "iverilog", judge_input->test_dir_path, test->name,
             src_files_arg, out_file_name, out_file_name);
-    
+
     int compilation_exit_code = system(command);
+    free(command);
+    free(src_files_arg);
     if (compilation_exit_code != 0) {
         set_judge_error(ERROR_COMPILING_VERILOG_FILE);
         return;
