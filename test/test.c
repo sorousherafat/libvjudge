@@ -1,4 +1,4 @@
-#include "../vjudge.h"
+#include <vjudge.h>
 
 void print_judge_result(judge_result_t *result) {
     printf("{\n"

@@ -1,10 +1,14 @@
-#include "vjudge.h"
 #include <dirent.h>
+#include <libvcd.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <linux/limits.h>
+#include <sys/stat.h>
+
+#include <vjudge.h>
 
 static const char *out_file_name = ".tmp.o";
 static const char *vcd_file_name = ".tmp.vcd";
@@ -93,8 +97,17 @@ void check_files_existence(char *src_dir_path, char *test_dir_path) {
 void load_tests() {
     struct dirent *tests_dirent;
     while ((tests_dirent = readdir(tests_dir)) != NULL) {
-        if (tests_dirent->d_type != DT_REG)
-            continue;
+	char test_file_path[PATH_MAX];
+	snprintf(test_file_path, sizeof(test_file_path), "%s/%s", judge_input->test_dir_path, tests_dirent->d_name);
+	
+	struct stat test_stat;
+	if (stat(test_file_path, &test_stat) < 0) {
+	    set_judge_error(ERROR_OPENING_TESTS_DIRECTORY);
+	    return;
+	}
+
+	if (S_ISDIR(test_stat.st_mode))
+	    continue;
 
         char *test_name;
         if (!try_get_test_name(tests_dirent->d_name, &test_name))
@@ -114,19 +127,26 @@ void load_tests() {
 int load_srcs(char *src_files_paths[]) {
     struct dirent *src_dirent;
     size_t src_files_count = 0;
-    const char *src_file_path_format = "%s/%s";
     while ((src_dirent = readdir(srcs_dir)) != NULL) {
-        if (src_dirent->d_type != DT_REG)
-            continue;
-        int src_file_path_length =
-            snprintf(NULL, 0, src_file_path_format, judge_input->src_dir_path, src_dirent->d_name);
+	char src_file_path[PATH_MAX];
+	snprintf(src_file_path, sizeof(src_file_path), "%s/%s", judge_input->src_dir_path, src_dirent->d_name);
+	
+	struct stat src_stat;
+	if (stat(src_file_path, &src_stat) < 0) {
+	    set_judge_error(ERROR_OPENING_SRCS_DIRECTORY);
+	    return -1;
+	}
+
+	if (S_ISDIR(src_stat.st_mode))
+	    continue;
+
+        int src_file_path_length = strlen(src_file_path) + 1;
         if (src_file_path_length < 0) {
             set_judge_error(ERROR_OPENING_SRCS_DIRECTORY);
             return -1;
         }
-        src_files_paths[src_files_count] = malloc((src_file_path_length + 1) * sizeof(char));
-        snprintf(src_files_paths[src_files_count], src_file_path_length + 1, src_file_path_format,
-                 judge_input->src_dir_path, src_dirent->d_name);
+        src_files_paths[src_files_count] = malloc(src_file_path_length * sizeof(char));
+        snprintf(src_files_paths[src_files_count], src_file_path_length, "%s", src_file_path);
         src_files_count += 1;
     }
     return src_files_count;
@@ -230,7 +250,7 @@ bool run_test(size_t src_files_count, char *src_file_paths[], test_t *test) {
     if (judge_result->error != NO_ERROR)
         return false;
 
-    vcd_t *vcd = open_vcd((char *)vcd_file_name);
+    vcd_t *vcd = libvcd_read_vcd_from_path((char *)vcd_file_name);
     if (vcd == NULL) {
         set_judge_error(ERROR_OPENING_VCD_FILE);
         return false;
@@ -260,7 +280,7 @@ void create_vcd_file(size_t src_files_count, char *src_file_paths[], const test_
 }
 
 bool check_assertion(vcd_t *vcd, assertion_result_t *assertion_result, assertion_t *assertion) {
-    assertion_result->actual_value = get_value_from_vcd(vcd, assertion->signal_name, assertion->timestamp);
+    assertion_result->actual_value = libvcd_get_signal_value(vcd, assertion->signal_name, assertion->timestamp);
     if (strcmp(assertion_result->actual_value, assertion->expected_value) == 0) {
         assertion_result->passed = true;
         return true;
