@@ -1,12 +1,29 @@
-SRC=vjudge.c
-OBJECTS=vjudge.o
 CC=gcc
-CFLAGS=-g -Wall -O4
+CFLAGS=-Wall -g -std=c11 -O3 -Isrc/ -Iinclude/
+LDFLAGS=
 
-build: $(SRC)
-	$(CC) $(CFLAGS) -o $(OBJECTS) -c $(SRC)
+SRC_DIR=src
+LIB_DIR=lib
+TEST_DIR=test
+BUILD_DIR=build
+
+LIB_SOURCES=$(wildcard $(SRC_DIR)/*.c $(LIB_DIR)/*.c)
+LIB_OBJECTS=$(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(LIB_SOURCES))
+TEST_SOURCES=$(wildcard $(TEST_DIR)/*.c)
+TEST_EXECUTABLE=$(BUILD_DIR)/test
+
+all: $(TEST_EXECUTABLE)
+
+$(TEST_EXECUTABLE): $(LIB_OBJECTS) $(TEST_SOURCES) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(TEST_SOURCES) $(LIB_OBJECTS) -o $@ $(LDFLAGS)
+
+$(BUILD_DIR)/%.o: $(LIB_SOURCES) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR):
+	mkdir -p $@
 
 clean:
-	rm $(OBJECTS)
+	rm -rf $(BUILD_DIR)
 
-.PHONY: build
+.PHONY: all clean
