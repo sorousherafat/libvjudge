@@ -1,3 +1,6 @@
+# Build output
+build/*
+
 # Compile commands for clangd
 compile_commands.json
 
