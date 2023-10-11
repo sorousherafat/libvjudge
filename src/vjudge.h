@@ -1,11 +1,10 @@
 #ifndef VJUDGE_VJUDGE_H
 #define VJUDGE_VJUDGE_H
 
+#include <libvcd.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-
-#include "libvcd.h"
 
 #define VJUDGE_MAX_NAME_SIZE 128
 #define VJUDGE_MAX_ASSERTIONS_NO 1024
