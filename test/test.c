@@ -43,8 +43,6 @@ int main(int argc, char *argv[]) {
     run_judge(&judge_input, &judge_result);
 
     print_judge_result(&judge_result);
-    // printf("Passed: %d/%d\n", judge_result.passed_tests_count, judge_result.tests_count);
-    // printf("Error: %d\n", judge_result.error);
 
     return 0;
 }
