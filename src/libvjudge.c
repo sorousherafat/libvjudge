@@ -10,7 +10,7 @@
 #include <linux/limits.h>
 #include <sys/stat.h>
 
-#include <vjudge.h>
+#include <libvjudge.h>
 
 static const char *out_file_name = ".tmp.o";
 static const char *vcd_file_name = ".tmp.vcd";

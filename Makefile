@@ -1,4 +1,4 @@
-CC=gcc
+iCC=gcc
 CFLAGS=-Wall -g -std=c11 -O3 -Isrc/ -Iinclude/
 LDFLAGS=
 
