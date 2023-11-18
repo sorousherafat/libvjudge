@@ -302,7 +302,10 @@ char *create_temp_dir(judge_result_t *judge_result) {
         return NULL;
     }
 
-    return temp_dir_path;
+    char *result = (char *)malloc((strlen(temp_dir_path) + 1) * sizeof(char));
+    strcpy(result, temp_dir_path);
+
+    return result;
 }
 
 bool run_test(const char *test_dir_path, size_t src_files_count, char *src_file_paths[], const char *temp_dir_path,
