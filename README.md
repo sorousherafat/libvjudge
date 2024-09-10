@@ -1,4 +1,5 @@
-# vjudge-core
+# libvjudge
+
 the core of an automatic judge for verilog HDL code.
 
 ## Components
