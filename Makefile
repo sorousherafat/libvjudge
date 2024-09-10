@@ -1,29 +1,42 @@
-iCC=gcc
-CFLAGS=-Wall -g -std=c11 -O3 -Isrc/ -Iinclude/
-LDFLAGS=
+PREFIX?=/usr
+
+CC=gcc
+CFLAGS=-Wall -g -std=c11 -O3 -fpic -Isrc/
+LDFLAGS=-lvcd
 
 SRC_DIR=src
-LIB_DIR=lib
 TEST_DIR=test
 BUILD_DIR=build
 
-LIB_SOURCES=$(wildcard $(SRC_DIR)/*.c $(LIB_DIR)/*.c)
-LIB_OBJECTS=$(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.a, $(LIB_SOURCES))
+HEADER=$(SRC_DIR)/libvjudge.h
+LIB_TARGET=$(BUILD_DIR)/libvjudge.so
+LIB_SOURCES=$(wildcard $(SRC_DIR)/*.c)
+LIB_OBJECTS=$(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(LIB_SOURCES))
 TEST_SOURCES=$(wildcard $(TEST_DIR)/*.c)
 TEST_EXECUTABLE=$(BUILD_DIR)/test
 
 all: $(TEST_EXECUTABLE)
 
-$(TEST_EXECUTABLE): $(LIB_OBJECTS) $(TEST_SOURCES) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_SOURCES) $(LIB_OBJECTS) -o $@ $(LDFLAGS)
+install: $(LIB_TARGET)
+	sudo install -D -m 644 $(LIB_TARGET) $(PREFIX)/lib/
+	sudo install -D -m 644 $(HEADER) $(PREFIX)/include/
 
-$(BUILD_DIR)/%.a: $(LIB_SOURCES) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+$(TEST_EXECUTABLE): $(LIB_TARGET) $(TEST_SOURCES) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(TEST_SOURCES) $(LIB_TARGET) -o $@ $(LDFLAGS)
+
+$(LIB_TARGET): $(LIB_OBJECTS)
+	$(CC) $(CFLAGS) $(LIB_OBJECTS) -o $@ $(LDFLAGS) -shared 
+
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@ $(LDFLAGS)
 
 $(BUILD_DIR):
 	mkdir -p $@
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+uninstall:
+	sudo rm $(PREFIX)/lib/$(notdir $(LIB_TARGET)) $(PREFIX)/include/$(notdir $(HEADER))
 
 .PHONY: all clean
