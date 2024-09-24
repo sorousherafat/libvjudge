@@ -1,4 +1,4 @@
-#include <libvjudge.h>
+#include <vjudge.h>
 
 void print_judge_result(judge_result_t *result) {
     printf("{\n"
@@ -40,7 +40,7 @@ int main(int argc, char *argv[]) {
     judge_input.test_dir_path = argv[1];
     judge_input.src_dir_path = argv[2];
 
-    run_judge(&judge_input, &judge_result);
+    vjudge_run(&judge_input, &judge_result);
 
     print_judge_result(&judge_result);
 

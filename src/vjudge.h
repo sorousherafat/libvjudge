@@ -1,10 +1,10 @@
 #ifndef VJUDGE_VJUDGE_H
 #define VJUDGE_VJUDGE_H
 
-#include <libvcd.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <vcd.h>
 
 #define VJUDGE_MAX_NAME_SIZE 128
 #define VJUDGE_MAX_ASSERTIONS_NO 1024
@@ -55,6 +55,6 @@ typedef struct {
     char *src_dir_path;
 } judge_input_t;
 
-void run_judge(judge_input_t *judge_input, judge_result_t *judge_result);
+void vjudge_run(judge_input_t *judge_input, judge_result_t *judge_result);
 
 #endif // VJUDGE_VJUDGE_H

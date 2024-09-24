@@ -1,7 +1,6 @@
 #define _DEFAULT_SOURCE
 
 #include <dirent.h>
-#include <libvcd.h>
 #include <linux/limits.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -9,63 +8,44 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <vcd.h>
 
-#include <libvjudge.h>
+#include "vjudge.h"
 
 static const char *out_file_name = ".tmp.o";
 static const char *vcd_file_name = ".tmp.vcd";
 
-void check_files_existence(judge_input_t *judge_input, DIR **src_dir, DIR **test_dir, judge_result_t *judge_result);
+static void check_files_existence(judge_input_t *judge_input, DIR **src_dir, DIR **test_dir,
+                                  judge_result_t *judge_result);
+static char *get_real_path(char *path, judge_result_t *judge_result, error_t error);
+static void load_tests(char *test_dir_path, DIR *test_dir, judge_result_t *judge_result);
+static bool try_get_test_name(char *file_name, char **test_name);
+static bool test_exists(const char *test_name, test_t *tests, size_t tests_count);
+static test_t *read_test(char *test_name, judge_result_t *judge_result);
+static void read_test_assertions(const char *test_dir_path, const struct dirent *tests_dirent, const char *test_name,
+                                 test_t *test, judge_result_t *judge_result);
+static void read_assertions(test_t *test, FILE *assertion_file, judge_result_t *judge_result);
+static void read_assertion(test_t *test, timestamp_t timestamp, char *expected_value, char *signal_name);
+static void write_assertion_file_path(char *assertion_file_path, const char *test_name, const char *test_dir_path);
+static FILE *open_assertion_file(const struct dirent *tests_dirent, const char *assertion_file_path,
+                                 judge_result_t *judge_result);
+static int load_srcs(const char *src_dir_path, DIR *src_dir, char *src_files_paths[], judge_result_t *judge_result);
+static bool is_verilog_file_path(const char *path);
+static void run_tests(const char *test_dir_path, size_t src_files_count, char *src_file_paths[],
+                      judge_result_t *judge_result);
+static char *create_temp_dir(judge_result_t *judge_result);
+static bool run_test(const char *test_dir_path, size_t src_files_count, char *src_file_paths[],
+                     const char *temp_dir_path, test_t *test, judge_result_t *judge_result);
+static void create_vcd_file(const char *test_dir_path, size_t src_files_count, char *src_file_paths[],
+                            const char *temp_dir_path, const test_t *test, judge_result_t *judge_result);
+static vcd_t *read_vcd_file(const char *temp_dir_path, judge_result_t *judge_result);
+static bool check_assertion(vcd_t *vcd, assertion_result_t *assertion_result, assertion_t *assertion);
+static size_t count_passed_assertions(const test_t *test, vcd_t *vcd);
+static void test_clean_up(const char *temp_dir_path);
+static void set_judge_error(judge_result_t *judge_result, error_t error);
+static void strjoin(char *dest, char *src[], size_t length, char *delimiter, char *prefix, char *suffix);
 
-char *get_real_path(char *path, judge_result_t *judge_result, error_t error);
-
-void load_tests(char *test_dir_path, DIR *test_dir, judge_result_t *judge_result);
-
-bool try_get_test_name(char *file_name, char **test_name);
-
-bool test_exists(const char *test_name, test_t *tests, size_t tests_count);
-
-test_t *read_test(char *test_name, judge_result_t *judge_result);
-
-void read_test_assertions(const char *test_dir_path, const struct dirent *tests_dirent, const char *test_name,
-                          test_t *test, judge_result_t *judge_result);
-
-void read_assertions(test_t *test, FILE *assertion_file, judge_result_t *judge_result);
-
-void read_assertion(test_t *test, timestamp_t timestamp, char *expected_value, char *signal_name);
-
-void write_assertion_file_path(char *assertion_file_path, const char *test_name, const char *test_dir_path);
-
-FILE *open_assertion_file(const struct dirent *tests_dirent, const char *assertion_file_path,
-                          judge_result_t *judge_result);
-
-int load_srcs(const char *src_dir_path, DIR *src_dir, char *src_files_paths[], judge_result_t *judge_result);
-
-bool is_verilog_file_path(const char *path);
-
-void run_tests(const char *test_dir_path, size_t src_files_count, char *src_file_paths[], judge_result_t *judge_result);
-
-char *create_temp_dir(judge_result_t *judge_result);
-
-bool run_test(const char *test_dir_path, size_t src_files_count, char *src_file_paths[], const char *temp_dir_path,
-              test_t *test, judge_result_t *judge_result);
-
-void create_vcd_file(const char *test_dir_path, size_t src_files_count, char *src_file_paths[],
-                     const char *temp_dir_path, const test_t *test, judge_result_t *judge_result);
-
-vcd_t *read_vcd_file(const char *temp_dir_path, judge_result_t *judge_result);
-
-bool check_assertion(vcd_t *vcd, assertion_result_t *assertion_result, assertion_t *assertion);
-
-size_t count_passed_assertions(const test_t *test, vcd_t *vcd);
-
-void test_clean_up(const char *temp_dir_path);
-
-void set_judge_error(judge_result_t *judge_result, error_t error);
-
-void strjoin(char *dest, char *src[], size_t length, char *delimiter, char *prefix, char *suffix);
-
-void run_judge(judge_input_t *judge_input, judge_result_t *judge_result) {
+void vjudge_run(judge_input_t *judge_input, judge_result_t *judge_result) {
     judge_result->error = VJUDGE_NO_ERROR;
     judge_result->tests_count = 0;
     judge_result->passed_tests_count = 0;
@@ -238,7 +218,7 @@ int load_srcs(const char *src_dir_path, DIR *src_dir, char *src_files_paths[], j
         snprintf(src_file_path, sizeof(src_file_path), "%s/%s", src_dir_path, src_dirent->d_name);
 
         if (!is_verilog_file_path(src_file_path))
-            continue;        
+            continue;
 
         struct stat src_stat;
         if (stat(src_file_path, &src_stat) < 0) {
@@ -345,7 +325,7 @@ void create_vcd_file(const char *test_dir_path, size_t src_files_count, char *sr
 vcd_t *read_vcd_file(const char *temp_dir_path, judge_result_t *judge_result) {
     char vcd_file_path[PATH_MAX];
     snprintf(vcd_file_path, PATH_MAX, "%s/%s", temp_dir_path, vcd_file_name);
-    vcd_t *vcd = libvcd_read_vcd_from_path(vcd_file_path);
+    vcd_t *vcd = vcd_read_from_path(vcd_file_path);
     if (vcd == NULL) {
         set_judge_error(judge_result, VJUDGE_ERROR_OPENING_VCD_FILE);
         return false;
@@ -355,7 +335,8 @@ vcd_t *read_vcd_file(const char *temp_dir_path, judge_result_t *judge_result) {
 }
 
 bool check_assertion(vcd_t *vcd, assertion_result_t *assertion_result, assertion_t *assertion) {
-    assertion_result->actual_value = libvcd_get_signal_value(vcd, assertion->signal_name, assertion->timestamp);
+    signal_t *signal = vcd_get_signal_by_name(vcd, assertion->signal_name);
+    assertion_result->actual_value = vcd_signal_get_value_at_timestamp(signal, assertion->timestamp);
     if (strcmp(assertion_result->actual_value, assertion->expected_value) == 0) {
         assertion_result->passed = true;
         return true;
