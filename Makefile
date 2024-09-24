@@ -8,7 +8,7 @@ SRC_DIR=src
 TEST_DIR=test
 BUILD_DIR=build
 
-HEADER=$(SRC_DIR)/libvjudge.h
+HEADER=$(SRC_DIR)/vjudge.h
 LIB_TARGET=$(BUILD_DIR)/libvjudge.so
 LIB_SOURCES=$(wildcard $(SRC_DIR)/*.c)
 LIB_OBJECTS=$(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(LIB_SOURCES))
